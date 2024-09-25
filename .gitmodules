@@ -1,0 +1,7 @@
+[submodule "deps/KlemmUI"]
+	path = deps/KlemmUI
+	url = https://github.com/Klemmbaustein/KlemmUI.git
+	branch = KlemmUI3
+[submodule "deps/json"]
+	path = deps/json
+	url = https://github.com/nlohmann/json.git
