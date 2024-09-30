@@ -3,6 +3,7 @@
 #include <Markup/MarkupParse.h>
 #include <Markup/ParseError.h>
 #include <unordered_set>
+#include <Markup/MarkupVerify.h>
 
 void replaceAll(std::string& str, const std::string& from, const std::string& to)
 {
@@ -70,6 +71,7 @@ void Protocol::ScanFile(std::string Content, std::string Uri)
 		FoundErrors.push_back(DiagnosticError{ .Message = ErrorText, .Line = ErrorLine, .Begin = Begin, .End = End });
 	};
 	LastParseResult = kui::MarkupParse::ParseFiles({ Entry });
+	kui::markupVerify::Verify(LastParseResult);
 
 	PublishDiagnostics(FoundErrors, Uri);
 }
