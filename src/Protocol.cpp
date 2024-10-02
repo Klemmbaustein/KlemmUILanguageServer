@@ -81,6 +81,9 @@ static std::string GetTooltipFromElement(kui::MarkupStructure::UIElement From, s
 	using namespace kui::MarkupStructure;
 	using namespace Protocol;
 
+	// TODO: Some editors (like visual studio) do not support markdown hover results.
+	// Check for this and return a plain text result.
+
 	if (From.Type == UIElement::ElementType::UserDefined)
 		return "`element " + From.TypeName.Text + " : UIBox`\n\nUser defined element. Defined in `" + ConvertFilePath(File) + "`";
 
@@ -264,6 +267,7 @@ void Protocol::HandleClientMessage(Message msg)
 
 	if (msg.Method == "initialize")
 	{
+		// TODO: Read the content of the initialize method instead of just assuming basic capabilities.
 		// clang-format off
 		ResponseMessage Response = ResponseMessage(msg, { 
 			{ "capabilities", {
@@ -281,6 +285,7 @@ void Protocol::HandleClientMessage(Message msg)
 					{"legend", {}}
 				}},
 				{"completionProvider", json::object()}
+			// TODO: Properly handle the position encoding.
 			//	{ "positionEncoding", "utf-8" }
 			}} });
 		// clang-format on
