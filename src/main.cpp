@@ -1,5 +1,6 @@
 #include <iostream>
 #include "Protocol.h"
+#include "Windows.h"
 
 int main(int argc, char** argv)
 {
@@ -14,6 +15,10 @@ int main(int argc, char** argv)
 	}
 	catch (std::exception& e)
 	{
-		std::cerr << e.what();
+		MessageBoxA(NULL, e.what(), "", 0);
+	}
+	catch (const char* e)
+	{
+		MessageBoxA(NULL, e, "", 0);
 	}
 }

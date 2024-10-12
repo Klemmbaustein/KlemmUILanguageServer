@@ -21,13 +21,15 @@ Message::Message(json FromJson)
 	{
 		this->Method = FromJson.at("method");
 		this->MessageID = FromJson.at("id");
-		this->MessageJson = FromJson.at("params");
+		if (FromJson.contains("params"))
+			this->MessageJson = FromJson.at("params");
 		this->IsRequest = true;
 	}
 	else
 	{
 		this->Method = FromJson.at("method");
-		this->MessageJson = FromJson.at("params");
+		if (FromJson.contains("params"))
+			this->MessageJson = FromJson.at("params");
 		this->IsRequest = false;
 	}
 }
@@ -59,6 +61,9 @@ Message Message::ReadFromStdOut()
 		}
 	}
 
+	if (ContentLength == 0)
+		exit(0);
+
 	char* ContentBuffer = new char[ContentLength + 1]();
 	std::cin.read(ContentBuffer, ContentLength);
 	ContentBuffer[ContentLength] = 0;
@@ -88,9 +93,9 @@ Message Message::ReadFromStdOut()
 void Message::Send()
 {
 	std::string MessageContent = GetMessageJson().dump();
+	//std::cerr << GetMessageJson().dump(2) << std::endl;
 	std::string MessageString = StrUtil::Format("Content-Length: %i\r\n\r\n", int(MessageContent.size())) + MessageContent;
-	setmode(fileno(stdout), O_BINARY);
-	setmode(fileno(stderr), O_BINARY);
+	int _ = _setmode(_fileno(stdout), O_BINARY);
 	std::cout.write(MessageString.c_str(), MessageString.size());
 	std::cout << std::flush;
 }
