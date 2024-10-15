@@ -15,7 +15,16 @@ add_subdirectory("deps/json")
 add_subdirectory("deps/KlemmUI/Util/Markup/MarkupLib")
 
 # Add source to this project's executable.
-add_executable(KlemmUILanguageServer "src/Protocol.cpp" "src/Protocol.h" "src/main.cpp" "src/Message.h" "src/Message.cpp" "src/Util/StrUtil.h" "src/Util/StrUtil.cpp")
+add_executable(KlemmUILanguageServer
+	"src/Protocol.h"
+	"src/Protocol.cpp"
+	"src/main.cpp"
+	"src/Message.h"
+	"src/Message.cpp"
+	"src/Util/StrUtil.h"
+	"src/Util/StrUtil.cpp"
+	"src/Workspace.h"
+	"src/Workspace.cpp")
 
 target_link_libraries(KlemmUILanguageServer PRIVATE nlohmann_json)
 target_link_libraries(KlemmUILanguageServer PRIVATE KlemmUIMarkup)
