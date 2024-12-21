@@ -6,20 +6,13 @@
 #include <Markup/ParseError.h>
 #include <unordered_set>
 #include <Markup/MarkupVerify.h>
+using namespace kui::MarkupStructure;
 
 namespace protocol
 {
 	bool AllowMarkdownInHover = false;
 	bool ReceivedShutdownRequest = false;
 	bool HasVsCppLocalVariable = true;
-
-	struct FileData
-	{
-		bool Opened = false;
-		json SemanticTokens = json::array();
-		std::string Content;
-		std::string Name;
-	};
 
 	struct VariableUsage
 	{
@@ -43,7 +36,6 @@ namespace protocol
 	};
 
 	std::map<std::string, std::vector<VariableUsage>> VariableUsages;
-	std::map<std::string, FileData> Files;
 	static kui::MarkupStructure::ParseResult LastParseResult;
 }
 
@@ -132,6 +124,7 @@ namespace protocol::tokens
 
 	static json GetDocumentTokens(std::string FileName)
 	{
+		using namespace workspace;
 		std::vector<tokens::Token> FileTokens;
 		for (auto& i : LastParseResult.Globals)
 		{
@@ -173,36 +166,6 @@ namespace protocol::tokens
 	}
 }
 
-static void ReplaceAll(std::string& str, const std::string& from, const std::string& to)
-{
-	if (from.empty())
-		return;
-	size_t start_pos = 0;
-	while ((start_pos = str.find(from, start_pos)) != std::string::npos)
-	{
-		str.replace(start_pos, from.size(), to);
-		start_pos += to.size();
-	}
-}
-
-std::string protocol::ConvertFilePath(std::string FilePathUri)
-{
-	const char* FileUri = "file:///";
-	size_t UriSize = strlen(FileUri);
-
-	if (FilePathUri.substr(0, UriSize) != FileUri)
-		return FilePathUri;
-
-	ReplaceAll(FilePathUri, "%3A", ":");
-	ReplaceAll(FilePathUri, "%3a", ":");
-	return FilePathUri.substr(UriSize);
-}
-
-static std::string GetFileDisplayName(std::string Path)
-{
-	return Path.substr(Path.find_last_of("/") + 1);
-}
-
 void protocol::Init()
 {
 }
@@ -210,25 +173,29 @@ void protocol::Init()
 static std::string GetGlobalHoverMessage(kui::MarkupStructure::Global* From)
 {
 	using namespace protocol;
+	using namespace workspace;
+
 	if (AllowMarkdownInHover)
 	{
 		if (From->Value.empty())
-			return "`global " + From->Name.Text + "´\n\nDefined in `" + GetFileDisplayName(From->File) + "`";
-		return "`global " + From->Name.Text + " = " + From->Value + "´\n\nDefined in `" + GetFileDisplayName(From->File) + "`";
+			return "`global " + From->Name.Text + "´\n\nDefined in `" + GetDisplayName(From->File) + "`";
+		return "`global " + From->Name.Text + " = " + From->Value + "´\n\nDefined in `" + GetDisplayName(From->File) + "`";
 	}
 	if (From->Value.empty())
-		return "global " + From->Name.Text + "\nDefined in " + GetFileDisplayName(From->File);
-	return "global " + From->Name.Text + " = " + From->Value + "\nDefined in " + GetFileDisplayName(From->File);
+		return "global " + From->Name.Text + "\nDefined in " + GetDisplayName(From->File);
+	return "global " + From->Name.Text + " = " + From->Value + "\nDefined in " + GetDisplayName(From->File);
 }
 
 static std::string GetConstHoverMessage(kui::MarkupStructure::Constant* From)
 {
 	using namespace protocol;
+	using namespace workspace;
+
 	if (AllowMarkdownInHover)
 	{
-		return "`const " + From->Name.Text + " = " + From->Value + "´\n\nDefined in `" + GetFileDisplayName(From->File) + "`";
+		return "`const " + From->Name.Text + " = " + From->Value + "´\n\nDefined in `" + GetDisplayName(From->File) + "`";
 	}
-	return "const " + From->Name.Text + " = " + From->Value + "\nDefined in " + GetFileDisplayName(From->File);
+	return "const " + From->Name.Text + " = " + From->Value + "\nDefined in " + GetDisplayName(From->File);
 }
 
 static std::string GetVariableHoverMessage(std::string Name, kui::MarkupStructure::MarkupElement* From)
@@ -239,6 +206,31 @@ static std::string GetVariableHoverMessage(std::string Name, kui::MarkupStructur
 		return "`var " + From->FromToken.Text + "." + Name + "´";
 	}
 	return "var " + From->FromToken.Text + "." + Name;
+}
+
+static std::string GetElementHoverMessage(kui::MarkupStructure::UIElement From, std::string File)
+{
+	using namespace kui::MarkupStructure;
+	using namespace protocol;
+	using namespace workspace;
+
+	std::string FilePath = ConvertFilePath(File);
+
+	PropElementType Type = GetTypeFromString(From.TypeName);
+	std::string Name = From.TypeName.Text;
+
+	std::string DerivedFrom = IsSubclassOf(Type, PropElementType::UIBackground) && Type != PropElementType::UIBackground ? "UIBackground" : "UIBox";
+
+	if (AllowMarkdownInHover)
+	{
+		if (From.Type == UIElement::ElementType::UserDefined)
+			return StrUtil::Format("`element %s : %s`\n\nUser defined element.", Name.c_str(), DerivedFrom.c_str());
+		return StrUtil::Format("`element %s : %s`\n\nNative (C++) element.", Name.c_str(), DerivedFrom.c_str());
+	}
+
+	if (From.Type == UIElement::ElementType::UserDefined)
+		return StrUtil::Format("element %s : %s\nUser defined element.", Name.c_str(), DerivedFrom.c_str());
+	return StrUtil::Format("element %s : %s\nNative (C++) element.", Name.c_str(), DerivedFrom.c_str());
 }
 
 static void ScanForVariableUsages(kui::MarkupStructure::UIElement& Target, kui::MarkupStructure::MarkupElement& Root)
@@ -302,7 +294,7 @@ static void ScanForVariableUsages(kui::MarkupStructure::UIElement& Target, kui::
 
 void protocol::PublishDiagnostics(std::vector<protocol::DiagnosticError> Error)
 {
-	for (auto& File : Files)
+	for (auto& File : workspace::Files)
 	{
 		json DiagnosticsJson = json::array();
 
@@ -333,8 +325,10 @@ void protocol::PublishDiagnostics(std::vector<protocol::DiagnosticError> Error)
 	}
 }
 
-void protocol::ScanFile(std::string Content, std::string Uri)
+void protocol::ScanFile(const std::string& Content, std::string Uri)
 {
+	using namespace workspace;
+
 	std::vector<kui::MarkupParse::FileEntry> Entries;
 
 	Files[Uri].Content = Content;
@@ -351,7 +345,15 @@ void protocol::ScanFile(std::string Content, std::string Uri)
 
 	bool Verifying = false;
 	kui::parseError::ErrorCallback = [&FoundErrors, &Verifying](std::string ErrorText, std::string File, size_t ErrorLine, size_t Begin, size_t End) {
-		FoundErrors.push_back(DiagnosticError{ .Message = ErrorText, .File = File, .Type = Verifying ? DiagnosticError::Verify : DiagnosticError::Parse, .Line = ErrorLine, .Begin = Begin, .End = End });
+		FoundErrors.push_back(DiagnosticError
+			{
+				.Message = ErrorText,
+				.File = File,
+				.Type = Verifying ? DiagnosticError::Verify : DiagnosticError::Parse,
+				.Line = ErrorLine,
+				.Begin = Begin,
+				.End = End,
+			});
 		};
 	LastParseResult = kui::MarkupParse::ParseFiles(Entries);
 	Verifying = true;
@@ -369,30 +371,6 @@ void protocol::ScanFile(std::string Content, std::string Uri)
 	{
 		Files[i.first].SemanticTokens = tokens::GetDocumentTokens(i.first);
 	}
-}
-
-static std::string GetTooltipFromElement(kui::MarkupStructure::UIElement From, std::string File)
-{
-	using namespace kui::MarkupStructure;
-	using namespace protocol;
-
-	std::string FilePath = ConvertFilePath(File);
-
-	PropElementType Type = GetTypeFromString(From.TypeName);
-	std::string Name = From.TypeName.Text;
-
-	std::string DerivedFrom = IsSubclassOf(Type, PropElementType::UIBackground) && Type != PropElementType::UIBackground ? "UIBackground" : "UIBox";
-
-	if (AllowMarkdownInHover)
-	{
-		if (From.Type == UIElement::ElementType::UserDefined)
-			return StrUtil::Format("`element %s : %s`\n\nUser defined element.", Name.c_str(), DerivedFrom.c_str());
-		return StrUtil::Format("`element %s : %s`\n\nNative (C++) element.", Name.c_str(), DerivedFrom.c_str());
-	}
-
-	if (From.Type == UIElement::ElementType::UserDefined)
-		return StrUtil::Format("element %s : %s\nUser defined element.", Name.c_str(), DerivedFrom.c_str());
-	return StrUtil::Format("element %s : %s\nNative (C++) element.", Name.c_str(), DerivedFrom.c_str());
 }
 
 static kui::MarkupStructure::UIElement* GetClosestElement(std::vector<kui::MarkupStructure::UIElement>& From, size_t Line, size_t Character)
@@ -414,14 +392,18 @@ static kui::MarkupStructure::UIElement* GetClosestElement(std::vector<kui::Marku
 	return nullptr;
 }
 
-static std::optional<kui::MarkupStructure::UIElement> GetElementAt(size_t Line, size_t Character)
+static std::optional<std::pair<UIElement*, MarkupElement*>> GetElementAt(std::string File, size_t Line, size_t Character)
 {
 	for (auto& i : protocol::LastParseResult.Elements)
 	{
+		if (i.File != File)
+		{
+			continue;
+		}
 		std::vector RootArray = { i.Root };
 		auto* Token = GetClosestElement(RootArray, Line, Character);
 		if (Token)
-			return *Token;
+			return std::pair{ Token, &i };
 	}
 	return {};
 }
@@ -463,13 +445,18 @@ std::pair<std::string, std::string> GetPropertyInfo(const kui::MarkupStructure::
 	return {};
 }
 
-static std::string GetElementHoverMessage(kui::MarkupStructure::MarkupElement& Root, kui::MarkupStructure::UIElement& FromElement, size_t Char, size_t Line, std::string File)
+static std::string GetTooltipFromElement(MarkupElement& Root, UIElement& FromElement, size_t Char, size_t Line, std::string File)
 {
-	if (FromElement.TypeName.BeginChar <= Char && FromElement.TypeName.EndChar > Char && Line == FromElement.TypeName.Line)
+	if (FromElement.TypeName.BeginChar <= Char
+		&& FromElement.TypeName.EndChar > Char
+		&& Line == FromElement.TypeName.Line)
 	{
-		return GetTooltipFromElement(FromElement, File);
+		return GetElementHoverMessage(FromElement, File);
 	}
-	if (!FromElement.ElementName.Empty() && FromElement.ElementName.BeginChar <= Char && FromElement.ElementName.EndChar > Char && Line == FromElement.ElementName.Line)
+	if (!FromElement.ElementName.Empty()
+		&& FromElement.ElementName.BeginChar <= Char
+		&& FromElement.ElementName.EndChar > Char
+		&& Line == FromElement.ElementName.Line)
 	{
 		return "child " + FromElement.TypeName.Text + " " + Root.FromToken.Text + "." + FromElement.ElementName.Text;
 	}
@@ -497,7 +484,7 @@ static std::string GetElementHoverMessage(kui::MarkupStructure::MarkupElement& R
 
 	for (auto& Child : FromElement.Children)
 	{
-		std::string Message = GetElementHoverMessage(Root, Child, Char, Line, File);
+		std::string Message = GetTooltipFromElement(Root, Child, Char, Line, File);
 		if (!Message.empty())
 		{
 			return Message;
@@ -510,13 +497,14 @@ static std::string GetElementHoverMessage(kui::MarkupStructure::MarkupElement& R
 static std::string GetHoverMessage(std::string File, size_t Char, size_t Line)
 {
 	using namespace protocol;
+	using namespace workspace;
 
 	for (auto& i : LastParseResult.Elements)
 	{
-		if (!workspace::CompareFiles(ConvertFilePath(i.File), ConvertFilePath(File)))
+		if (!CompareFiles(ConvertFilePath(i.File), ConvertFilePath(File)))
 			continue;
 
-		std::string HoverMessage = GetElementHoverMessage(i, i.Root, Char, Line, File);
+		std::string HoverMessage = GetTooltipFromElement(i, i.Root, Char, Line, File);
 
 		if (!HoverMessage.empty())
 			return HoverMessage;
@@ -525,7 +513,7 @@ static std::string GetHoverMessage(std::string File, size_t Char, size_t Line)
 	{
 		for (VariableUsage& Usage : Variable.second)
 		{
-			if (!workspace::CompareFiles(ConvertFilePath(Usage.File), ConvertFilePath(File)))
+			if (!CompareFiles(ConvertFilePath(Usage.File), ConvertFilePath(File)))
 				continue;
 			if (Usage.Token.BeginChar <= Char && Usage.Token.EndChar > Char && Line == Usage.Token.Line)
 			{
@@ -542,7 +530,7 @@ static std::string GetHoverMessage(std::string File, size_t Char, size_t Line)
 
 	for (auto& Global : LastParseResult.Globals)
 	{
-		if (!workspace::CompareFiles(ConvertFilePath(Global.File), ConvertFilePath(File)))
+		if (!CompareFiles(ConvertFilePath(Global.File), ConvertFilePath(File)))
 			continue;
 
 		if (Global.Name.BeginChar <= Char && Global.Name.EndChar > Char && Line == Global.Name.Line)
@@ -553,7 +541,7 @@ static std::string GetHoverMessage(std::string File, size_t Char, size_t Line)
 
 	for (auto& Const : LastParseResult.Constants)
 	{
-		if (!workspace::CompareFiles(ConvertFilePath(Const.File), ConvertFilePath(File)))
+		if (!CompareFiles(ConvertFilePath(Const.File), ConvertFilePath(File)))
 			continue;
 
 		if (Const.Name.BeginChar <= Char && Const.Name.EndChar > Char && Line == Const.Name.Line)
@@ -571,7 +559,7 @@ static json GetTokenCompletions(std::string File, kui::stringParse::StringToken 
 
 	json CompletionArray = json::array();
 
-	std::optional<UIElement> Elem = GetElementAt(Token.Line, Token.BeginChar);
+	std::optional Elem = GetElementAt(File, Token.Line, Token.BeginChar);
 	std::unordered_set<std::string> AutoCompleteValues;
 
 	auto AddKeyword = [&CompletionArray](std::string Name, std::string Detail) {
@@ -580,12 +568,36 @@ static json GetTokenCompletions(std::string File, kui::stringParse::StringToken 
 			{ "kind", 14 } });
 		};
 
+	auto AddGlobal = [&CompletionArray](std::string Name, std::string Detail) {
+		CompletionArray.push_back({ { "label", Name },
+			{ "detail", Detail },
+			{ "kind", 6 } });
+		};
+
+	auto AddVariable = [&CompletionArray](std::string Name, std::string Detail) {
+		CompletionArray.push_back({ { "label", Name },
+			{ "detail", Detail },
+			{ "kind", 10 } });
+		};
+
+	auto AddConst = [&CompletionArray](std::string Name, std::string Detail) {
+		CompletionArray.push_back({ { "label", Name },
+			{ "detail", Detail },
+			{ "kind", 21 } });
+		};
+
+	auto AddElement = [&CompletionArray](std::string Name, std::string Detail) {
+		CompletionArray.push_back({ { "label", Name },
+			{ "detail", Detail },
+			{ "kind", 7 } });
+		};
+
 	if (Elem.has_value())
 	{
 		AddKeyword("child", "Child element keyword");
 		AddKeyword("var", "Variable keyword");
 
-		PropElementType ElementType = GetTypeFromString(Elem->TypeName);
+		PropElementType ElementType = GetTypeFromString(Elem->first->TypeName);
 
 		for (const auto& i : Properties)
 		{
@@ -605,6 +617,24 @@ static json GetTokenCompletions(std::string File, kui::stringParse::StringToken 
 				{ "documentation", Info.second },
 				{ "kind", 6 }
 				});
+		}
+
+		for (auto& i : Elem->second->Root.Variables)
+		{
+			AddVariable(i.first, GetVariableHoverMessage(i.first, Elem->second));
+		}
+
+		for (auto& i : protocol::LastParseResult.Constants)
+		{
+			AddConst(i.Name, GetConstHoverMessage(&i));
+		}
+		for (auto& i : protocol::LastParseResult.Globals)
+		{
+			AddGlobal(i.Name, GetGlobalHoverMessage(&i));
+		}
+		for (auto& i : protocol::LastParseResult.Elements)
+		{
+			AddElement(i.FromToken.Text, GetElementHoverMessage(i.Root, i.File));
 		}
 	}
 	else
@@ -638,6 +668,8 @@ static json GetFoldingRanges(kui::MarkupStructure::UIElement& From)
 
 void protocol::HandleClientMessage(Message msg)
 {
+	using namespace workspace;
+
 	if (!msg.IsRequest)
 	{
 		HandleClientNotification(msg);
@@ -658,6 +690,12 @@ void protocol::HandleClientMessage(Message msg)
 		{
 			const json& TokenTypes = msg.MessageJson.at(SemanticTokensTypes);
 			HasVsCppLocalVariable = std::find(TokenTypes.begin(), TokenTypes.end(), "cppLocalVariable") != TokenTypes.end();
+		}
+
+		if (msg.MessageJson.contains("rootUri"))
+		{
+			CurrentWorkspacePath = ConvertFilePath(msg.MessageJson["rootUri"]);
+			UpdateFiles();
 		}
 
 		// TODO: Read the content of the initialize method instead of just assuming basic capabilities.
@@ -767,24 +805,14 @@ void protocol::HandleClientNotification(Message msg)
 	}
 	else if (msg.Method == "textDocument/didOpen")
 	{
+		using namespace workspace;
 		json TextDocument = msg.MessageJson.at("textDocument");
 		std::string Uri = TextDocument.at("uri");
 		std::string Text = TextDocument.at("text");
 
-		for (auto& i : Files)
-		{
-			if (workspace::CompareFiles(ConvertFilePath(i.first), ConvertFilePath(Uri)))
-			{
-				Files.erase(i.first);
-				break;
-			}
-		}
-
-		Files.insert({ Uri,
-			FileData{
-				.Opened = true,
-				.Content = Text,
-			} });
+		OnUriOpened(Uri);
+		OpenedFiles.push_back(ConvertFilePath(Uri));
+		UpdateFiles();
 
 		ScanFile(Text, Uri);
 	}

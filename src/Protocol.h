@@ -19,10 +19,9 @@ namespace protocol
 	};
 
 
-	std::string ConvertFilePath(std::string FilePathUri);
 	void Init();
 	void PublishDiagnostics(std::vector<DiagnosticError> Error);
-	void ScanFile(std::string Content, std::string Uri);
+	void ScanFile(const std::string& Content, std::string Uri);
 	void HandleClientMessage(Message msg);
 	void HandleClientNotification(Message msg);
 }

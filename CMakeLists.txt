@@ -1,7 +1,7 @@
 ﻿# CMakeList.txt : CMake project for KlemmUILanguageServer, include source and define
 # project specific logic here.
 #
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.10)
 
 # Enable Hot Reload for MSVC compilers if supported.
 if(POLICY CMP0141)
@@ -28,6 +28,10 @@ add_executable(KlemmUILanguageServer
 
 target_link_libraries(KlemmUILanguageServer PRIVATE nlohmann_json)
 target_link_libraries(KlemmUILanguageServer PRIVATE KlemmUIMarkup)
+
+if(MSVC)
+  add_definitions(/MP)
+endif()
 
 if(CMAKE_VERSION VERSION_GREATER 3.12)
 	set_property(TARGET KlemmUILanguageServer PROPERTY CXX_STANDARD 20)
