@@ -37,6 +37,7 @@ namespace protocol
 
 	std::map<std::string, std::vector<VariableUsage>> VariableUsages;
 	static kui::MarkupStructure::ParseResult LastParseResult;
+	std::vector<DiagnosticError> LastDiagnostics;
 }
 
 namespace protocol::tokens
@@ -130,18 +131,18 @@ namespace protocol::tokens
 		{
 			if (workspace::CompareFiles(ConvertFilePath(i.File), ConvertFilePath(FileName)))
 				FileTokens.push_back(tokens::Token{
-					.Token = i.Name,
-					.Type = VARIABLE,
-					.Modifier = 0 });
+				.Token = i.Name,
+				.Type = VARIABLE,
+				.Modifier = 0 });
 		}
 
 		for (auto& i : LastParseResult.Constants)
 		{
 			if (workspace::CompareFiles(ConvertFilePath(i.File), ConvertFilePath(FileName)))
 				FileTokens.push_back(tokens::Token{
-					.Token = i.Name,
-					.Type = VARIABLE,
-					.Modifier = 0 });
+				.Token = i.Name,
+				.Type = VARIABLE,
+				.Modifier = 0 });
 		}
 
 		for (auto& i : LastParseResult.Elements)
@@ -156,9 +157,9 @@ namespace protocol::tokens
 			{
 				if (workspace::CompareFiles(ConvertFilePath(Usage.File), ConvertFilePath(FileName)))
 					FileTokens.push_back(tokens::Token{
-						.Token = Usage.Token,
-						.Type = Usage.Type == VariableUsage::Var ? PROPERTY : VARIABLE,
-						.Modifier = Usage.Type == VariableUsage::Const ? MOD_READONLY : 0 });
+					.Token = Usage.Token,
+					.Type = Usage.Type == VariableUsage::Var ? PROPERTY : VARIABLE,
+					.Modifier = Usage.Type == VariableUsage::Const ? MOD_READONLY : 0 });
 			}
 		}
 
@@ -243,7 +244,7 @@ static void ScanForVariableUsages(kui::MarkupStructure::UIElement& Target, kui::
 		if (VariableUsages.contains(Name))
 			VariableUsages[Name].push_back(Usage);
 		else
-			VariableUsages.insert({Name, {Usage}});
+			VariableUsages.insert({ Name, { Usage } });
 		};
 
 	for (auto& i : Target.ElementProperties)
@@ -292,10 +293,22 @@ static void ScanForVariableUsages(kui::MarkupStructure::UIElement& Target, kui::
 	}
 }
 
-void protocol::PublishDiagnostics(std::vector<protocol::DiagnosticError> Error)
+void protocol::PublishDiagnostics(std::vector<protocol::DiagnosticError> Error, Message* RespondTo)
 {
+	std::string TargetFile;
+
+	if (RespondTo)
+	{
+		TargetFile = RespondTo->MessageJson["textDocument"];
+	}
+
 	for (auto& File : workspace::Files)
 	{
+		if (!TargetFile.empty() && File.first != TargetFile)
+		{
+			continue;
+		}
+
 		json DiagnosticsJson = json::array();
 
 		for (auto& i : Error)
@@ -304,24 +317,36 @@ void protocol::PublishDiagnostics(std::vector<protocol::DiagnosticError> Error)
 				continue;
 
 			DiagnosticsJson.push_back(json::object({
-				{"message", i.Message},
-				{"severity", i.Severity},
-				{"code", i.Type == DiagnosticError::Verify ? "kuiVerify" : "kuiParse"},
-				{"range", {{"start", {
+				{ "message", i.Message },
+				{ "severity", i.Severity },
+				{ "code", i.Type == DiagnosticError::Verify ? "kuiVerify" : "kuiParse" },
+				{ "range", { { "start", {
 					{ "line", i.Line },
-					{ "character", i.Begin },
-				}},
+				{ "character", i.Begin },
+				} },
 				{ "end", {
 					{ "line", i.Line },
-					{ "character", i.End },
-				}}}} }));
+				{ "character", i.End },
+				} } } } }));
 		}
 
-		Message NewMessage = Message("textDocument/publishDiagnostics", {
-			{"uri", File.first},
-			{"diagnostics", DiagnosticsJson}
-			}, true);
-		NewMessage.Send();
+		if (RespondTo)
+		{
+			ResponseMessage NewMessage = ResponseMessage(*RespondTo, {
+				{ "kind", "full" },
+				{ "items", DiagnosticsJson },
+				{ "diagnostics", DiagnosticsJson }
+				});
+			NewMessage.Send();
+		}
+		else
+		{
+			Message NewMessage = Message("textDocument/publishDiagnostics", {
+				{ "uri", File.first },
+				{ "diagnostics", DiagnosticsJson }
+				}, true);
+			NewMessage.Send();
+		}
 	}
 }
 
@@ -341,11 +366,11 @@ void protocol::ScanFile(const std::string& Content, std::string Uri)
 			});
 	}
 
-	std::vector<DiagnosticError> FoundErrors;
+	LastDiagnostics.clear();
 
 	bool Verifying = false;
-	kui::parseError::ErrorCallback = [&FoundErrors, &Verifying](std::string ErrorText, std::string File, size_t ErrorLine, size_t Begin, size_t End) {
-		FoundErrors.push_back(DiagnosticError
+	kui::parseError::ErrorCallback = [&Verifying](std::string ErrorText, std::string File, size_t ErrorLine, size_t Begin, size_t End) {
+		LastDiagnostics.push_back(DiagnosticError
 			{
 				.Message = ErrorText,
 				.File = File,
@@ -365,7 +390,7 @@ void protocol::ScanFile(const std::string& Content, std::string Uri)
 		ScanForVariableUsages(i.Root, i);
 	}
 
-	PublishDiagnostics(FoundErrors);
+	PublishDiagnostics(LastDiagnostics);
 
 	for (auto& i : LastParseResult.FileLines)
 	{
@@ -701,24 +726,24 @@ void protocol::HandleClientMessage(Message msg)
 		// TODO: Read the content of the initialize method instead of just assuming basic capabilities.
 		ResponseMessage Response = ResponseMessage(msg, {
 			{ "capabilities", {
-				{"hoverProvider", true},
-				{"textDocumentSync", {
-					{"openClose", true},
-					{"change", 1}
-				}},
-				{"diagnosticProvider", {
-					{"interFileDiagnostics", true},
-					{"workspaceDiagnostics", false}
-				}},
-				{"foldingRangeProvider", true},
-				{"semanticTokensProvider", {
-					{"full", true},
-					{"legend", tokens::GetTokenLegends()}
-				}},
-				{"completionProvider", json::object()}
+				{ "hoverProvider", true },
+			{ "textDocumentSync", {
+				{ "openClose", true },
+			{ "change", 1 }
+			} },
+			{ "diagnosticProvider", {
+				{ "interFileDiagnostics", true },
+			{ "workspaceDiagnostics", false }
+			} },
+			{ "foldingRangeProvider", true },
+			{ "semanticTokensProvider", {
+				{ "full", true },
+			{ "legend", tokens::GetTokenLegends() }
+			} },
+			{ "completionProvider", json::object() }
 			// TODO: Properly handle the position encoding.
 			//	{ "positionEncoding", "utf-8" }
-			}} });
+			} } });
 		Response.Send();
 	}
 	else if (msg.Method == "textDocument/hover")
@@ -728,7 +753,7 @@ void protocol::HandleClientMessage(Message msg)
 			msg.MessageJson.at("position").at("character"),
 			msg.MessageJson.at("position").at("line"));
 		ResponseMessage Response = ResponseMessage(msg, {
-				{"contents", Message.empty() ? json(json::value_t::null) : json(Message)}
+			{ "contents", Message.empty() ? json(json::value_t::null) : json(Message) }
 			});
 		Response.Send();
 	}
@@ -779,11 +804,20 @@ void protocol::HandleClientMessage(Message msg)
 		ResponseMessage Response = ResponseMessage(msg, { { "data", Files[File].SemanticTokens } });
 		Response.Send();
 	}
+	else if (msg.Method == "textDocument/diagnostic")
+	{
+		PublishDiagnostics(LastDiagnostics);
+	}
 	else if (msg.Method == "shutdown")
 	{
 		ResponseMessage Response = ResponseMessage(msg, json());
 		Response.Send();
 		ReceivedShutdownRequest = true;
+	}
+	else if (msg.Method.size() && msg.Method[0] != '$')
+	{
+		ResponseMessage Response = ResponseMessage(msg, json(), ResponseMessage::ResponseError(LSPErrorCode::MethodNotFound, "Unknown method."));
+		std::cerr << "unhandled method: " << msg.Method << " - responding with error." << std::endl;
 	}
 	else
 	{

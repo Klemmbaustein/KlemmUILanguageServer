@@ -20,7 +20,7 @@ namespace protocol
 
 
 	void Init();
-	void PublishDiagnostics(std::vector<DiagnosticError> Error);
+	void PublishDiagnostics(std::vector<DiagnosticError> Error, Message* RespondTo = nullptr);
 	void ScanFile(const std::string& Content, std::string Uri);
 	void HandleClientMessage(Message msg);
 	void HandleClientNotification(Message msg);
