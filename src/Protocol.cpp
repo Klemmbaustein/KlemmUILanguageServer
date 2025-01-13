@@ -617,10 +617,23 @@ static json GetTokenCompletions(std::string File, kui::stringParse::StringToken 
 			{ "kind", 7 } });
 		};
 
+	auto AddValue = [&CompletionArray](std::string Name, std::string Detail) {
+		CompletionArray.push_back({ { "label", Name },
+			{ "detail", Detail },
+			{ "kind", 12 } });
+		};
+
 	if (Elem.has_value())
 	{
 		AddKeyword("child", "Child element keyword");
 		AddKeyword("var", "Variable keyword");
+		AddValue("true", "True boolean value");
+		AddValue("false", "False boolean value");
+		AddValue("horizontal", "Horizontal orientation");
+		AddValue("vertical", "Vertical orientation");
+		AddValue("default", "Default align. Left to right, bottom to top.");
+		AddValue("centered", "Centered align.");
+		AddValue("reverse", "Reverse align. Right to left, top to bottom.");
 
 		PropElementType ElementType = GetTypeFromString(Elem->first->TypeName);
 
