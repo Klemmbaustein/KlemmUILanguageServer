@@ -16,12 +16,20 @@ std::vector<std::string> workspace::GetAllUIFiles()
 
 	std::vector<std::string> Found;
 
-	for (auto& i : filesystem::recursive_directory_iterator(CurrentWorkspacePath))
+	try
 	{
-		if (i.is_regular_file() && i.path().extension() == ".kui")
+		for (auto& i : filesystem::recursive_directory_iterator(CurrentWorkspacePath,
+			std::filesystem::directory_options::skip_permission_denied))
 		{
-			Found.push_back(i.path().string());
+			if (i.is_regular_file() && i.path().extension() == ".kui")
+			{
+				Found.push_back(i.path().string());
+			}
 		}
+	}
+	catch (std::filesystem::filesystem_error e)
+	{
+		std::cerr << e.what() << std::endl;
 	}
 	return Found;
 }

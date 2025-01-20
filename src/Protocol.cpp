@@ -417,7 +417,7 @@ static kui::MarkupStructure::UIElement* GetClosestElement(std::vector<kui::Marku
 	return nullptr;
 }
 
-static std::optional<std::pair<UIElement*, MarkupElement*>> GetElementAt(std::string File, size_t Line, size_t Character)
+static std::optional<std::pair<UIElement, MarkupElement*>> GetElementAt(std::string File, size_t Line, size_t Character)
 {
 	for (auto& i : protocol::LastParseResult.Elements)
 	{
@@ -428,7 +428,7 @@ static std::optional<std::pair<UIElement*, MarkupElement*>> GetElementAt(std::st
 		std::vector RootArray = { i.Root };
 		auto* Token = GetClosestElement(RootArray, Line, Character);
 		if (Token)
-			return std::pair{ Token, &i };
+			return std::pair{ *Token, &i };
 	}
 	return {};
 }
@@ -635,7 +635,7 @@ static json GetTokenCompletions(std::string File, kui::stringParse::StringToken 
 		AddValue("centered", "Centered align.");
 		AddValue("reverse", "Reverse align. Right to left, top to bottom.");
 
-		PropElementType ElementType = GetTypeFromString(Elem->first->TypeName);
+		PropElementType ElementType = GetTypeFromString(Elem->first.TypeName);
 
 		for (const auto& i : Properties)
 		{
