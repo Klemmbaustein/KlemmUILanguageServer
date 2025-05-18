@@ -1,0 +1,93 @@
+element SidebarEntry
+{
+	var Image = "res:Folder.png";
+	var Title = "Opened";
+	var Padding = 0;
+	var HighlightOpacity = 0;
+
+	width = 100%;
+
+	child UIButton btn
+	{
+		width = 100%;
+
+		color = Color_Background;
+		padding = 3px;
+		downPadding = 0;
+
+		verticalAlign = centered;
+
+		corners = 5px;
+
+		child UIBackground
+		{
+			height = 100%;
+			width = 2px;
+
+			corners = 2px;
+
+			upPadding = 4px;
+			downPadding = 4px;
+			leftPadding = Padding;
+			rightPadding = 2px;
+
+			color = Color_Text;
+			opacity = HighlightOpacity;
+		}
+
+		child UIBackground
+		{
+			size = 18px;
+			image = Image;
+			color = Color_Text;
+			padding = 2px;
+		}
+
+		child UIText
+		{
+			text = Title;
+			size = 11px;
+			color = Color_Text;
+			padding = 3px;
+		}
+	}
+}
+
+element SidebarElement
+{
+	position = -1;
+	size = 2;
+
+	horizontalAlign = reverse;
+
+	child UIBackground
+	{
+		width = 300px;
+		height = 100%;
+
+		color = Color_Background;
+
+		border = 1px;
+		borderColor = Color_BackgroundHighlight;
+		topBorder = false;
+		rightBorder = false;
+		bottomBorder = false;
+
+		child UIScrollBox
+		{
+			orientation = vertical;
+			size = 100%;
+
+			child SearchField search
+			{
+				Width = 260px;
+			}
+
+			child UIBox tabBox
+			{
+				orientation = vertical;
+				width = 100%;
+			}
+		}
+	}
+}

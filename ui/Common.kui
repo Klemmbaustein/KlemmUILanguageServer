@@ -1,0 +1,45 @@
+global Color_Background = 0.1;
+global Color_BackgroundHighlight = 0.4;
+global Color_Text = 1;
+
+element SearchField
+{
+	var Width = 200px;
+
+	orientation = vertical;
+	horizontalAlign = centered;
+
+	width = 100%;
+
+	upPadding = 13px;
+
+	child UIBox
+	{
+		child UIBackground
+		{
+			image = "res:Search.png";
+			size = 16px;
+			padding = 3px;
+			color = Color_Text;
+		}
+
+		child UITextField field
+		{
+			width = Width;
+			height = 22px;
+			textSize = 11px;
+			opacity = 0;
+			hintText = "Search";
+			textColor = Color_Text;
+		}
+	}
+
+	child UIBackground
+	{
+		height = 1px;
+		width = 100%;
+		leftPadding = 6px;
+		rightPadding = 6px;
+		color = Color_BackgroundHighlight;
+	}
+}

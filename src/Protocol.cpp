@@ -6,6 +6,9 @@
 #include <Markup/ParseError.h>
 #include <unordered_set>
 #include <Markup/MarkupVerify.h>
+#include "Preview/PreviewWindow.h"
+#include <kui/Timer.h>
+#include <thread>
 using namespace kui::MarkupStructure;
 
 namespace protocol
@@ -125,11 +128,19 @@ namespace protocol::tokens
 
 	static json GetDocumentTokens(std::string FileName)
 	{
+#if _WIN32
+		for (auto& i : FileName)
+		{
+			if (i == '\\')
+				i = '/';
+		}
+#endif
+
 		using namespace workspace;
 		std::vector<tokens::Token> FileTokens;
 		for (auto& i : LastParseResult.Globals)
 		{
-			if (workspace::CompareFiles(ConvertFilePath(i.File), ConvertFilePath(FileName)))
+			if (i.File == FileName)
 				FileTokens.push_back(tokens::Token{
 				.Token = i.Name,
 				.Type = VARIABLE,
@@ -138,7 +149,7 @@ namespace protocol::tokens
 
 		for (auto& i : LastParseResult.Constants)
 		{
-			if (workspace::CompareFiles(ConvertFilePath(i.File), ConvertFilePath(FileName)))
+			if (i.File == FileName)
 				FileTokens.push_back(tokens::Token{
 				.Token = i.Name,
 				.Type = VARIABLE,
@@ -147,7 +158,7 @@ namespace protocol::tokens
 
 		for (auto& i : LastParseResult.Elements)
 		{
-			if (workspace::CompareFiles(ConvertFilePath(i.File), ConvertFilePath(FileName)))
+			if (i.File == FileName)
 				ScanElementForTokens(i.Root, FileTokens);
 		}
 
@@ -155,7 +166,7 @@ namespace protocol::tokens
 		{
 			for (auto& Usage : i.second)
 			{
-				if (workspace::CompareFiles(ConvertFilePath(Usage.File), ConvertFilePath(FileName)))
+				if (Usage.File == FileName)
 					FileTokens.push_back(tokens::Token{
 					.Token = Usage.Token,
 					.Type = Usage.Type == VariableUsage::Var ? PROPERTY : VARIABLE,
@@ -354,6 +365,8 @@ void protocol::ScanFile(const std::string& Content, std::string Uri)
 {
 	using namespace workspace;
 
+	kui::Timer t;
+
 	std::vector<kui::MarkupParse::FileEntry> Entries;
 
 	Files[Uri].Content = Content;
@@ -383,6 +396,7 @@ void protocol::ScanFile(const std::string& Content, std::string Uri)
 	LastParseResult = kui::MarkupParse::ParseFiles(Entries);
 	Verifying = true;
 	kui::markupVerify::Verify(LastParseResult);
+	preview::LoadParsed(&LastParseResult);
 
 	VariableUsages.clear();
 	for (auto& i : LastParseResult.Elements)
@@ -396,6 +410,7 @@ void protocol::ScanFile(const std::string& Content, std::string Uri)
 	{
 		Files[i.first].SemanticTokens = tokens::GetDocumentTokens(i.first);
 	}
+	std::cerr << t.Get() << std::endl;
 }
 
 static kui::MarkupStructure::UIElement* GetClosestElement(std::vector<kui::MarkupStructure::UIElement>& From, size_t Line, size_t Character)
@@ -716,6 +731,7 @@ void protocol::HandleClientMessage(Message msg)
 
 	if (msg.Method == "initialize")
 	{
+		std::cerr << msg.MessageJson.dump(2) << std::endl;
 		json::json_pointer ContentFormat = "/capabilities/textDocument/hover/contentFormat"_json_pointer;
 		if (msg.MessageJson.contains(ContentFormat))
 		{
@@ -748,6 +764,12 @@ void protocol::HandleClientMessage(Message msg)
 				{ "interFileDiagnostics", true },
 			{ "workspaceDiagnostics", false }
 			} },
+			{ "codeActionProvider", true },
+			{ "executeCommandProvider", {
+				{ "commands", {
+				"kuiShowPreviewWindow",
+			}
+				} } },
 			{ "foldingRangeProvider", true },
 			{ "semanticTokensProvider", {
 				{ "full", true },
@@ -757,6 +779,9 @@ void protocol::HandleClientMessage(Message msg)
 			// TODO: Properly handle the position encoding.
 			//	{ "positionEncoding", "utf-8" }
 			} } });
+
+		std::cerr << Response.MessageJson.dump(2) << std::endl;
+
 		Response.Send();
 	}
 	else if (msg.Method == "textDocument/hover")
@@ -804,6 +829,24 @@ void protocol::HandleClientMessage(Message msg)
 		ResponseMessage Response = ResponseMessage(msg, ResponseArray);
 		Response.Send();
 	}
+	else if (msg.Method == "textDocument/codeAction")
+	{
+		ResponseMessage Response = ResponseMessage(msg, { {
+			{"title", "Show preview window"},
+			{"isPreferred", true},
+			{ "command", {
+				{"title", "Show Preview"},
+			{"command", "kuiShowPreviewWindow"}
+			}}
+			}});
+		Response.Send();
+	}
+	else if (msg.Method == "workspace/executeCommand")
+	{
+		preview::Init();
+		ResponseMessage Response = ResponseMessage(msg, {});
+		Response.Send();
+	}
 	else if (msg.Method == "textDocument/semanticTokens/full")
 	{
 		json File = msg.MessageJson.at("/textDocument/uri"_json_pointer);
@@ -826,6 +869,7 @@ void protocol::HandleClientMessage(Message msg)
 		ResponseMessage Response = ResponseMessage(msg, json());
 		Response.Send();
 		ReceivedShutdownRequest = true;
+		preview::Destroy();
 	}
 	else if (msg.Method.size() && msg.Method[0] != '$')
 	{
@@ -858,7 +902,6 @@ void protocol::HandleClientNotification(Message msg)
 		std::string Text = TextDocument.at("text");
 
 		OnUriOpened(Uri);
-		OpenedFiles.push_back(ConvertFilePath(Uri));
 		UpdateFiles();
 
 		ScanFile(Text, Uri);
@@ -866,6 +909,11 @@ void protocol::HandleClientNotification(Message msg)
 	else if (msg.Method == "textDocument/didChange")
 	{
 		ScanFile(msg.MessageJson.at("contentChanges").at(0).at("text"), msg.MessageJson.at("textDocument").at("uri"));
+	}
+	else if (msg.Method == "textDocument/didClose")
+	{
+		workspace::OnUriClosed(msg.MessageJson.at("textDocument").at("uri"));
+		preview::LoadParsed(&LastParseResult);
 	}
 	else if (msg.Method == "NotificationReceived")
 	{

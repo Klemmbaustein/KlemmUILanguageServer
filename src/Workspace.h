@@ -24,6 +24,7 @@ namespace workspace
 	std::string ConvertFilePath(std::string FilePathUri);
 
 	void OnUriOpened(std::string Uri);
+	void OnUriClosed(std::string Uri);
 
 	std::string GetDisplayName(std::string PathOrUri);
 

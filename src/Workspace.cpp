@@ -23,7 +23,16 @@ std::vector<std::string> workspace::GetAllUIFiles()
 		{
 			if (i.is_regular_file() && i.path().extension() == ".kui")
 			{
-				Found.push_back(i.path().string());
+#if _WIN32
+				auto str = i.path().string();
+				for (auto& i : str)
+				{
+					if (i == '\\')
+						i = '/';
+				}
+#endif
+
+				Found.push_back(str);
 			}
 		}
 	}
@@ -80,6 +89,10 @@ void workspace::UpdateFiles()
 
 bool workspace::CompareFiles(std::string a, std::string b)
 {
+	if (a.empty() || b.empty())
+		return false;
+	if (a == b)
+		return true;
 	return filesystem::equivalent(a, b);
 }
 
@@ -110,6 +123,8 @@ std::string workspace::ConvertFilePath(std::string FilePathUri)
 
 void workspace::OnUriOpened(std::string Uri)
 {
+	OpenedFiles.push_back(ConvertFilePath(Uri));
+
 	std::string Path = ConvertFilePath(Uri);
 
 	for (auto& i : Files)
@@ -121,6 +136,20 @@ void workspace::OnUriOpened(std::string Uri)
 				});
 			Files.erase(i.first);
 			return;
+		}
+	}
+}
+
+void workspace::OnUriClosed(std::string Uri)
+{
+	Files.erase(Uri);
+
+	for (auto i = OpenedFiles.begin(); i < OpenedFiles.end(); i++)
+	{
+		if (CompareFiles(*i, ConvertFilePath(Uri)))
+		{
+			OpenedFiles.erase(i);
+			break;
 		}
 	}
 }

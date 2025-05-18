@@ -17,9 +17,15 @@ Message::Message(std::string Method, json MessageJson, bool Notification)
 
 Message::Message(json FromJson)
 {
+	if (FromJson.contains("error"))
+	{
+		std::cerr << FromJson.dump(2) << std::endl;
+	}
+
 	if (FromJson.contains("id"))
 	{
-		this->Method = FromJson.at("method");
+		if (FromJson.contains("method"))
+			this->Method = FromJson.at("method");
 		this->MessageID = FromJson.at("id");
 		if (FromJson.contains("params"))
 			this->MessageJson = FromJson.at("params");
